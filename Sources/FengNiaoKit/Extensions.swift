@@ -30,7 +30,7 @@ extension String {
         let nsstring = NSString(string: self)
         return NSMakeRange(0, nsstring.length)
     }
-    
+
     func plainFileName(extensions: [String]) -> String {
         let p = Path(self)
         var result: String!
@@ -40,21 +40,53 @@ extension String {
                 break
             }
         }
-        
+
         if result == nil {
             result = p.lastComponent
         }
-        
+
         if result.hasSuffix("@2x") || result.hasSuffix("@3x") {
             let endIndex = result.index(result.endIndex, offsetBy: -3)
             result = String(result[..<endIndex])
         }
         return result
     }
-    
+
     func appendingPathComponent(_ str: String) -> String {
         let nsstring = NSString(string: self)
         return nsstring.appendingPathComponent(str)
+    }
+
+    // Convert snake_case to camelCase
+    func snakeCaseToCamelCase() -> String {
+        let components = self.components(separatedBy: "_")
+        guard components.count > 1 else {
+            return self
+        }
+
+        let first = components[0]
+        let rest = components.dropFirst().map { $0.prefix(1).uppercased() + $0.dropFirst() }
+        return ([first] + rest).joined()
+    }
+
+    // Check if two strings match considering snake_case and camelCase conversion
+    func matchesWithCaseVariants(other: String) -> Bool {
+        // Direct match
+        if self == other {
+            return true
+        }
+
+        // Convert self (snake_case) to camelCase and compare
+        if self.snakeCaseToCamelCase() == other {
+            return true
+        }
+
+        // Convert other (snake_case) to camelCase and compare
+        if other.snakeCaseToCamelCase() == self {
+            return true
+        }
+
+        return false
     }
 }
 
@@ -67,7 +99,7 @@ extension Int {
             num = num / 1000.0
             level += 1
         }
-        
+
         if level == 0 {
             return "\(Int(num)) \(fileSizeSuffix[level])"
         } else {

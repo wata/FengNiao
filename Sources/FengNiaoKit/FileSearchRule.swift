@@ -35,20 +35,20 @@ protocol RegPatternSearchRule: FileSearchRule {
 
 extension RegPatternSearchRule {
     func search(in content: String) -> Set<String> {
-        
+
         let nsstring = NSString(string: content)
         var result = Set<String>()
-        
+
         for pattern in patterns {
             let reg = try! NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-            
+
             let matches = reg.matches(in: content, options: [], range: content.fullRange)
             for checkingResult in matches {
                 let extracted = nsstring.substring(with: checkingResult.range(at: 1))
                 result.insert(extracted.plainFileName(extensions: extensions) )
             }
         }
-        
+
         return result
     }
 }
@@ -59,7 +59,7 @@ struct PlainImageSearchRule: RegPatternSearchRule {
         if extensions.isEmpty {
             return []
         }
-        
+
         let joinedExt = extensions.joined(separator: "|")
         return ["\"(.+?)\\.(\(joinedExt))\""]
     }
@@ -72,7 +72,15 @@ struct ObjCImageSearchRule: RegPatternSearchRule {
 
 struct SwiftImageSearchRule: RegPatternSearchRule {
     let extensions: [String]
-    let patterns = ["\"(.*?)\"", "R.image.(.*?)\\(\\)"]
+    let patterns = [
+        "\"(.*?)\"",
+        "R.image.(.*?)\\(\\)",
+        "Image\\(\\.[^)]*\\.([a-zA-Z_][a-zA-Z0-9_]*)\\)",  // Image(.xxx.yyy) - extracts yyy
+        "Image\\(\\.([a-zA-Z_][a-zA-Z0-9_]*)\\)",           // Image(.xxx) - extracts xxx
+        ":[^\"\\n]*\\.([a-zA-Z_][a-zA-Z0-9_]+)",            // After colon: image: .HomeTab.icon
+        "= *\\.[^\"\\n]*\\.([a-zA-Z_][a-zA-Z0-9_]+)",      // After equals with nested: = .Tab.icon
+        "= *\\.([a-zA-Z_][a-zA-Z0-9_]+)(?![a-zA-Z0-9_])"   // After equals, single: = .icon
+    ]
 }
 
 struct XibImageSearchRule: RegPatternSearchRule {

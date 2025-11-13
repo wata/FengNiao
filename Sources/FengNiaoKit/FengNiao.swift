@@ -32,7 +32,7 @@ enum FileType {
     case xib
     case plist
     case pbxproj
-    
+
     init?(ext: String) {
         switch ext {
         case "swift": self = .swift
@@ -43,7 +43,7 @@ enum FileType {
         default: return nil
         }
     }
-    
+
     func searchRules(extensions: [String]) -> [FileSearchRule] {
         switch self {
         case .swift: return [SwiftImageSearchRule(extensions: extensions)]
@@ -59,13 +59,13 @@ public struct FileInfo {
     public let path: Path
     public let size: Int
     public let fileName: String
-    
+
     public init(path: String) {
         self.path = Path(path)
         self.size = self.path.size
         self.fileName = self.path.lastComponent
     }
-    
+
     public var readableSize: String {
         return size.fn_readableSize
     }
@@ -100,12 +100,12 @@ public struct FengNiao {
     let excludedPaths: [Path]
     let resourceExtensions: [String]
     let searchInFileExtensions: [String]
-    
+
     let regularDirExtensions = ["imageset", "launchimage", "appiconset", "stickersiconset", "complicationset", "bundle"]
     var nonDirExtensions: [String] {
         return resourceExtensions.filter { !regularDirExtensions.contains($0) }
     }
-    
+
     public init(projectPath: String, excludedPaths: [String], resourceExtensions: [String], searchInFileExtensions: [String]) {
         let path = Path(projectPath).absolute()
         self.projectPath = path
@@ -113,7 +113,7 @@ public struct FengNiao {
         self.resourceExtensions = resourceExtensions
         self.searchInFileExtensions = searchInFileExtensions
     }
-    
+
     public func unusedFiles() throws -> [FileInfo] {
         guard !resourceExtensions.isEmpty else {
             throw FengNiaoError.noResourceExtension
@@ -124,10 +124,10 @@ public struct FengNiao {
 
         let allResources = allResourceFiles()
         let usedNames = allUsedStringNames()
-        
+
         return FengNiao.filterUnused(from: allResources, used: usedNames).map( FileInfo.init )
     }
-    
+
     // Return a failed list of deleting
     static public func delete(_ unusedFiles: [FileInfo]) -> (deleted: [FileInfo], failed: [(FileInfo, Error)]) {
         var deleted = [FileInfo]()
@@ -142,7 +142,7 @@ public struct FengNiao {
         }
         return (deleted, failed)
     }
-    
+
     // delete the project.pbxproj image reference
     static public func deleteReference(projectFilePath: Path, deletedFiles: [FileInfo]) {
         if let content: String = try? projectFilePath.read() {
@@ -160,42 +160,42 @@ public struct FengNiao {
                     results.append(line)
                 }
             }
-            
+
             let resultString = results.joined(separator: "\n")
-            
+
             do {
                 try projectFilePath.write(resultString)
             } catch {
                 print(error)
             }
-            
+
         }
-        
+
     }
-    
+
     func allResourceFiles() -> [String: Set<String>] {
         let find = ExtensionFindProcess(path: projectPath, extensions: resourceExtensions, excluded: excludedPaths)
         guard let result = find?.execute() else {
             print("Resource finding failed.".red)
             return [:]
         }
-        
+
         var files = [String: Set<String>]()
         fileLoop: for file in result {
-            
+
             // Skip resources in a bundle
             let dirPaths = regularDirExtensions.map { ".\($0)/" }
             for dir in dirPaths where file.contains(dir) {
                 continue fileLoop
             }
-            
+
             // Skip the folders which suffix with a non-folder extension.
             // eg: We need to skip a folder with such name: /myfolder.png/ (although we should blame the one who named it)
             let filePath = Path(file)
             if let ext = filePath.extension, filePath.isDirectory && nonDirExtensions.contains(ext) {
                 continue
             }
-            
+
             let key = file.plainFileName(extensions: resourceExtensions)
             if let existing = files[key] {
                 files[key] = existing.union([file])
@@ -205,27 +205,27 @@ public struct FengNiao {
         }
         return files
     }
-    
+
     func allUsedStringNames() -> Set<String> {
         return usedStringNames(at: projectPath)
     }
-    
+
     func usedStringNames(at path: Path) -> Set<String> {
         guard let subPaths = try? path.children() else {
             print("Failed to get contents in path: \(path)".red)
             return []
         }
-        
+
         var result = [String]()
         for subPath in subPaths {
             if subPath.lastComponent.hasPrefix(".") {
                 continue
             }
-            
+
             if excludedPaths.contains(subPath) {
                 continue
             }
-            
+
             if subPath.isDirectory {
                 result.append(contentsOf: usedStringNames(at: subPath))
             } else {
@@ -233,12 +233,12 @@ public struct FengNiao {
                 guard searchInFileExtensions.contains(fileExt) else {
                     continue
                 }
-                
+
                 let fileType = FileType(ext: fileExt)
-                
+
                 let searchRules = fileType?.searchRules(extensions: resourceExtensions) ??
                                   [PlainImageSearchRule(extensions: resourceExtensions)]
-                
+
                 let content = (try? subPath.read()) ?? ""
                 result.append(contentsOf: searchRules.flatMap {
                     $0.search(in: content).map { name in
@@ -249,14 +249,28 @@ public struct FengNiao {
                 })
             }
         }
-        
+
         return Set(result)
     }
-    
+
     static func filterUnused(from all: [String: Set<String>], used: Set<String>) -> Set<String> {
         let unusedPairs = all.filter { key, _ in
-            return !used.contains(key) &&
-                   !used.contains { $0.similarPatternWithNumberIndex(other: key) }
+            // Check direct match
+            if used.contains(key) {
+                return false
+            }
+
+            // Check with number pattern
+            if used.contains(where: { $0.similarPatternWithNumberIndex(other: key) }) {
+                return false
+            }
+
+            // Check with case variants (snake_case <-> camelCase)
+            if used.contains(where: { $0.matchesWithCaseVariants(other: key) }) {
+                return false
+            }
+
+            return true
         }
         return Set( unusedPairs.flatMap { $0.value } )
     }
@@ -264,7 +278,7 @@ public struct FengNiao {
 
 let digitalRex = try! NSRegularExpression(pattern: "(\\d+)", options: .caseInsensitive)
 extension String {
-    
+
     func similarPatternWithNumberIndex(other: String) -> Bool {
         // self -> pattern "image%02d"
         // other -> name "image01"
@@ -273,7 +287,7 @@ extension String {
         guard matches.count >= 1 else { return false }
         let lastMatch = matches.last!
         let digitalRange = lastMatch.range(at: 1)
-        
+
         var prefix: String?
         var suffix: String?
 
@@ -282,13 +296,13 @@ extension String {
             let index = other.index(other.startIndex, offsetBy: digitalLocation)
             prefix = String(other[..<index])
         }
-        
+
         let digitalMaxRange = NSMaxRange(digitalRange)
         if digitalMaxRange < other.utf16.count {
             let index = other.index(other.startIndex, offsetBy: digitalMaxRange)
             suffix = String(other[index...])
         }
-        
+
         switch (prefix, suffix) {
         case (nil, nil):
             return false // only digital
